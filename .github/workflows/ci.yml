@@ -1,0 +1,25 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run schemes.py (symbol definitions + normalization check)
+        run: python3 schemes.py
+
+      - name: Run constellation.py (generates constellation plots)
+        run: python3 constellation.py
+
+      - name: Run ber.py (theoretical + Monte Carlo BER, generates overlay plot)
+        run: python3 ber.py
