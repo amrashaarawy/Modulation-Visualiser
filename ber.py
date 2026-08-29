@@ -7,7 +7,7 @@ BER is derived from SER assuming Gray-coded constellations, so BER ~= SER / bits
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.special import erfc
-from schemes import SCHEMES
+from schemes import SCHEMES, modulate, add_noise
 
 
 def Q(x):
@@ -25,39 +25,58 @@ def theoretical_ber(name, ebn0_db):
         ber = Q(np.sqrt(2 * ebn0_lin))
     elif name == "16-QAM":
         M = 16
-        ser = (4/np.sqrt(M)) * (1 - 1/np.sqrt(M)) * Q(np.sqrt(3*np.log2(M)/(M-1) * ebn0_lin))
+        ser = (4) * (1 - 1/np.sqrt(M)) * Q(np.sqrt(3*np.log2(M)/(M-1) * ebn0_lin))
         ber = ser / np.log2(M)
 
     return ber
 
 
-def plot_ber(ebn0_db):
-    """Overlay theoretical BER curves for all schemes on one semilogy plot"""
+def plot_ber(ebn0_db, n_bits=200000):
+    """Overlay theoretical BER curves and Monte Carlo simulated points."""
     plt.figure(figsize=(8, 6))
+
     for name in SCHEMES:
-        ber = theoretical_ber(name, ebn0_db)
-        plt.semilogy(ebn0_db, ber, label=f"{name} (theory)")
+        theory = theoretical_ber(name, ebn0_db)
+        line, = plt.semilogy(ebn0_db, theory, label=f"{name} (theory)")
+        color = line.get_color()                     # match sim dots to their line
+
+        sim = [simulate_ber(name, snr, n_bits) for snr in ebn0_db]
+        plt.plot(ebn0_db, sim, color=color, marker="o", markersize=6,
+                linewidth=1, linestyle="-", label=f"{name} (sim)")
 
     plt.xlabel("Eb/N0 (dB)")
     plt.ylabel("Bit Error Rate")
-    plt.title("Theoretical BER vs Eb/N0")
+    plt.title("BER vs Eb/N0 — theory vs Monte Carlo simulation")
     plt.grid(True, which="both", alpha=0.3)
-    plt.legend()
-    plt.ylim(1e-6, 1)                    
-    plt.savefig("outputs/ber_theoretical.png", dpi=150, bbox_inches="tight")
+    plt.legend(fontsize=8)
+    plt.ylim(1e-6, 1)
+    plt.savefig("outputs/ber_overlay.png", dpi=150, bbox_inches="tight")
     plt.close()
-    print("wrote outputs/ber_theoretical.png")
+    print("wrote outputs/ber_overlay.png")
 
-
-# --- tomorrow: simulation half ---
 def demodulate(received, symbols_set):
-    """Nearest-symbol decision. Returns decided indices. (built tomorrow)"""
-    raise NotImplementedError
+    """Nearest-symbol decision"""
+    diffs = received[:, None] - symbols_set[None, :]   # shape (n, m)
+    distances = np.abs(diffs)                            
+    decided_idx = np.argmin(distances, axis=1)            # shape (n,)
+    return decided_idx
 
+def simulate_ber(name, ebn0_db, n_bits):
+    """Monte Carlo BER at one Eb/N0"""
 
-def simulate_ber(name, ebn0_db, n):
-    """Monte Carlo BER at one Eb/N0. (built tomorrow)"""
-    raise NotImplementedError
+    symbols = SCHEMES[name]["symbols"]
+    bps = SCHEMES[name]["bits_per_symbol"]
+
+    n_symbols = n_bits // bps
+    sent, sent_idx = modulate(symbols, n_symbols)
+    received = add_noise(sent, ebn0_db, bps)
+    decided_idx = demodulate(received, symbols)
+
+    symbol_errors = np.sum(sent_idx != decided_idx)
+    ser = symbol_errors / n_symbols
+    ber = ser / bps            # Gray SER->BER
+    return ber
+
 
 
 if __name__ == "__main__":
